@@ -41,6 +41,9 @@ from whatsapp import (
     send_file as whatsapp_send_file,
 )
 from whatsapp import (
+    create_group as whatsapp_create_group,
+)
+from whatsapp import (
     send_message as whatsapp_send_message,
 )
 
@@ -364,6 +367,30 @@ def download_media(message_id: str, chat_jid: str) -> dict[str, Any]:
         return {"success": True, "message": "Media downloaded successfully", "file_path": file_path}
     else:
         return {"success": False, "message": "Failed to download media"}
+
+
+@mcp.tool()
+def create_group(name: str, participants: list[str]) -> dict[str, Any]:
+    """Create a new WhatsApp group.
+
+    Args:
+        name: Group name (max 25 characters)
+        participants: List of phone numbers (country code, no + or symbols, e.g., "639158332026")
+                     or JIDs (e.g., "639158332026@s.whatsapp.net"). Your own number is added automatically.
+
+    Returns:
+        A dictionary containing success status, a status message, and the new group JID if successful
+    """
+    if not name:
+        return {"success": False, "message": "Group name must be provided"}
+    if not participants:
+        return {"success": False, "message": "At least one participant is required"}
+
+    success, status_message, group_jid = whatsapp_create_group(name, participants)
+    result: dict[str, Any] = {"success": success, "message": status_message}
+    if group_jid:
+        result["group_jid"] = group_jid
+    return result
 
 
 def shutdown_handler(signum, frame):

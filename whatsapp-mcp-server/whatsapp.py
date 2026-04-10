@@ -859,6 +859,46 @@ def send_audio_message(recipient: str, media_path: str) -> tuple[bool, str]:
         return False, f"Unexpected error: {str(e)}"
 
 
+def create_group(name: str, participants: list[str]) -> tuple[bool, str, str | None]:
+    """Create a WhatsApp group with the given name and participants.
+
+    Args:
+        name: Group name (max 25 characters)
+        participants: List of phone numbers (e.g., "639158332026") or JIDs
+
+    Returns:
+        Tuple of (success, status_message, group_jid_or_none)
+    """
+    try:
+        if not name:
+            return False, "Group name must be provided", None
+        if len(name) > 25:
+            return False, "Group name must be 25 characters or fewer", None
+        if not participants:
+            return False, "At least one participant is required", None
+
+        url = f"{WHATSAPP_API_BASE_URL}/group/create"
+        payload = {"name": name, "participants": participants}
+
+        response = requests.post(url, json=payload)
+
+        if response.status_code == 200:
+            result = response.json()
+            success = result.get("success", False)
+            message = result.get("message", "Unknown response")
+            group_jid = result.get("group_jid")
+            return success, message, group_jid
+        else:
+            return False, f"Error: HTTP {response.status_code} - {response.text}", None
+
+    except requests.RequestException as e:
+        return False, f"Request error: {str(e)}", None
+    except json.JSONDecodeError:
+        return False, f"Error parsing response: {response.text}", None
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}", None
+
+
 def download_media(message_id: str, chat_jid: str) -> str | None:
     """Download media from a message and return the local file path.
 

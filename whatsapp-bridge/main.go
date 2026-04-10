@@ -866,6 +866,19 @@ func handleMessage(client *whatsmeow.Client, messageStore *MessageStore, msg *ev
 	}
 }
 
+// CreateGroupRequest represents the request body for the create group API
+type CreateGroupRequest struct {
+	Name         string   `json:"name"`
+	Participants []string `json:"participants"`
+}
+
+// CreateGroupResponse represents the response for the create group API
+type CreateGroupResponse struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message"`
+	GroupJID string `json:"group_jid,omitempty"`
+}
+
 // DownloadMediaRequest represents the request body for the download media API
 type DownloadMediaRequest struct {
 	MessageID string `json:"message_id"`
@@ -1285,6 +1298,97 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 				"message": fmt.Sprintf("Typing indicator set to %v", req.IsTyping),
 			})
 		}
+	})
+
+	// Handler for creating a group
+	http.HandleFunc("/api/group/create", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Check if connected
+		if !client.IsConnected() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(CreateGroupResponse{
+				Success: false,
+				Message: "WhatsApp client is not connected",
+			})
+			return
+		}
+
+		// Parse the request body
+		var req CreateGroupRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		// Validate request
+		if req.Name == "" {
+			http.Error(w, "Group name is required", http.StatusBadRequest)
+			return
+		}
+		if len(req.Name) > 25 {
+			http.Error(w, "Group name must be 25 characters or fewer", http.StatusBadRequest)
+			return
+		}
+		if len(req.Participants) == 0 {
+			http.Error(w, "At least one participant is required", http.StatusBadRequest)
+			return
+		}
+
+		// Build participant JIDs
+		participantJIDs := make([]types.JID, len(req.Participants))
+		for i, p := range req.Participants {
+			if strings.Contains(p, "@") {
+				parsed, err := types.ParseJID(p)
+				if err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(CreateGroupResponse{
+						Success: false,
+						Message: fmt.Sprintf("Invalid JID %q: %v", p, err),
+					})
+					return
+				}
+				participantJIDs[i] = parsed
+			} else {
+				participantJIDs[i] = types.JID{
+					User:   p,
+					Server: "s.whatsapp.net",
+				}
+			}
+		}
+
+		fmt.Printf("Creating group %q with %d participants\n", req.Name, len(participantJIDs))
+
+		// Create the group
+		groupInfo, err := client.CreateGroup(context.Background(), whatsmeow.ReqCreateGroup{
+			Name:         req.Name,
+			Participants: participantJIDs,
+		})
+
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(CreateGroupResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to create group: %v", err),
+			})
+			return
+		}
+
+		groupJID := groupInfo.JID.String()
+		fmt.Printf("Group created: %s (%s)\n", req.Name, groupJID)
+
+		_ = json.NewEncoder(w).Encode(CreateGroupResponse{
+			Success:  true,
+			Message:  fmt.Sprintf("Group %q created successfully", req.Name),
+			GroupJID: groupJID,
+		})
 	})
 
 	// Start the server with proper timeouts
