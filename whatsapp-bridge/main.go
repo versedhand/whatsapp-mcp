@@ -1089,8 +1089,21 @@ func extractDirectPathFromURL(url string) string {
 
 	pathPart := parts[1]
 
-	// Remove query parameters
-	pathPart = strings.SplitN(pathPart, "?", 2)[0]
+	// DO NOT strip the query string. Fixed 2026-07-27 (media download had been
+	// 403-ing since ~2026-06-05).
+	//
+	// The query params (ccb, oh, oe, _nc_sid) ARE the CDN's authorization —
+	// without them mmg.whatsapp.net returns 403 for every media object.
+	//
+	// It also breaks the URL structurally. whatsmeow's DownloadMediaWithPath
+	// builds the request as:
+	//     https://{host}{directPath}&hash={...}&mms-type={...}&__wa-mms=
+	// It APPENDS "&hash=", assuming directPath already opened a query string
+	// with "?". Strip the query and the result has no "?" anywhere, so every
+	// parameter is parsed as part of the path and the auth params are gone.
+	//
+	// Keeping the query string yields the correct:
+	//     https://{host}/o1/v/t24/...?ccb=9-4&oh=...&oe=...&hash=...&mms-type=...
 
 	// Create proper direct path format
 	return "/" + pathPart
